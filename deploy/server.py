@@ -17,6 +17,7 @@ Endpoints:
 
 import os
 import uuid
+import asyncio
 import logging
 from typing import Dict, Optional
 from contextlib import asynccontextmanager
@@ -25,6 +26,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sse_starlette.sse import EventSourceResponse
 
 from deploy.orchestrator import GoogleAdsAgent, create_agent_system
 
@@ -123,6 +125,29 @@ async def chat(request: ChatRequest):
     except Exception as e:
         logger.error(f"Chat error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/chat/stream")
+async def chat_stream(request: ChatRequest):
+    """Stream response via SSE. Runs agent in thread pool, yields word-by-word."""
+    session_id, agent = get_or_create_session(request.session_id)
+
+    async def event_generator():
+        try:
+            yield {"event": "session", "data": session_id}
+            loop = asyncio.get_event_loop()
+            response_text = await loop.run_in_executor(None, agent.chat, request.message)
+            words = response_text.split(" ")
+            for i, word in enumerate(words):
+                chunk = word + (" " if i < len(words) - 1 else "")
+                yield {"event": "message", "data": chunk}
+                await asyncio.sleep(0.02)
+            yield {"event": "done", "data": ""}
+        except Exception as e:
+            logger.error(f"Stream error: {e}")
+            yield {"event": "error", "data": str(e)}
+
+    return EventSourceResponse(event_generator())
 
 
 @app.post("/sessions", response_model=SessionInfo)
