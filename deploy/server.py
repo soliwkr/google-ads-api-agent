@@ -147,7 +147,11 @@ async def chat_stream(request: ChatRequest):
             logger.error(f"Stream error: {e}")
             yield {"event": "error", "data": str(e)}
 
-    return EventSourceResponse(event_generator())
+    # X-Accel-Buffering: no is required for SSE to work through Traefik/Nginx proxies
+    return EventSourceResponse(
+        event_generator(),
+        headers={"X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/sessions", response_model=SessionInfo)

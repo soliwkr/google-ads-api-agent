@@ -25,6 +25,19 @@ services:
       timeout: 10s
       retries: 3
 
+  # ── Frontend (Next.js chat UI) ──────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://agent:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - agent
+    restart: unless-stopped
+
   # ── Interactive CLI ─────────────────────────────────────────────────
   cli:
     build: .
